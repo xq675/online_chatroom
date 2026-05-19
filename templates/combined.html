@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Polling Chatroom</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+
+    <div id="login-panel" class="panel">
+        <div class="login-container">
+            <h2>Join the Chat</h2>
+            
+            <div class="error-message hidden" id="login-error-general">A general error occured. Please try again later.</div>
+            <div class="error-message hidden" id="login-error-empty">Please type a username</div>
+            <div class="error-message hidden" id="login-error-duplicate">Duplicate username</div>
+            <div class="error-message hidden" id="login-error-invalid">Invalid username (can only contain alphabetic characters)</div>
+            
+            <form id="login-form"> 
+                <input type="text" id="username" placeholder="Choose a username..." autocomplete="off">
+                <button type="submit" id="login-button">Enter Chatroom</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="chat-panel" class="panel hidden">
+        <div class="chat-container">
+            <div class="chat-header">
+                Python/JS Polling Chatroom
+            </div>
+            
+            <div class="chat-messages" id="chat-messages">
+                <!-- 
+                    
+                    chat messages go in here using the following format
+
+                    <div class="message received">
+                        <div class="meta">OTHER USERNAME</div>
+                        Hello everyone! Is this thing on?
+                    </div>
+                    
+                    <div class="message sent">
+                        <div class="meta">YOUR USERNAME</div>
+                        Yes, I can see your messages!
+                    </div>
+
+                -->
+            </div>
+
+            <form class="chat-input-area">
+                <input type="text" id="message-input" placeholder="Type a message..." autocomplete="off">
+                <button id="send-button">Send</button>
+                <button id='mode-button'>Switch Mode</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // PROVIDED: DOM REFERENCES
+        const DOM_REFERENCES = {
+            'login-panel': document.getElementById('login-panel'),
+            'login-error-general': document.getElementById('login-error-general'),
+            'login-error-empty': document.getElementById('login-error-empty'),
+            'login-error-duplicate': document.getElementById('login-error-duplicate'),
+            'login-error-invalid': document.getElementById('login-error-invalid'),
+            'username': document.getElementById('username'),
+            'login-button': document.getElementById('login-button'),
+            'chat-panel': document.getElementById('chat-panel'),
+            'message-input': document.getElementById('message-input'),
+            'send-button': document.getElementById('send-button'),
+            'chat-messages': document.getElementById('chat-messages'),
+            'mode-button': document.getElementById('mode-button')         
+        }
+
+        // working variables
+        let myUsername = undefined;
+        let messageOffset = 0;
+
+        DOM_REFERENCES['mode-button'].onclick = function(event) {
+            event.preventDefault();
+            document.body.classList.toggle('dark');
+        }
+
+        // Login logic
+        DOM_REFERENCES['login-button'].onclick = async function(event) {
+            // prevent the form from submitting
+            event.preventDefault();
+
+            // hide all error messages
+            DOM_REFERENCES['login-error-general'].classList.add('hidden');
+            DOM_REFERENCES['login-error-empty'].classList.add('hidden');
+            DOM_REFERENCES['login-error-duplicate'].classList.add('hidden');
+            DOM_REFERENCES['login-error-invalid'].classList.add('hidden');
+
+            // construct a payload with whatever the user typed into the text box
+            const payload = {
+                username: DOM_REFERENCES['username'].value
+            }
+
+            // attempt to contact the Flask API
+            try {
+
+                // construct a fetch request that includes the payload as a POST request
+                const response = await fetch('/login', {
+                    method: 'POST',
+                    headers: {
+                        // We MUST tell the server that the text we are sending is formatted as JSON
+                        'Content-Type': 'application/json' 
+                    },
+
+                    // Serialize the JS object into a JSON string
+                    body: JSON.stringify(payload)
+                });
+
+                // check to make sure the request went through
+                if (response.ok) {  
+
+                    // extract the JSON response
+                    const data = await response.json();
+
+                    // see if this is an error
+                    if (data.status == 'error') {
+
+                        if (data.detail == 'duplicate username') {
+                            DOM_REFERENCES['login-error-duplicate'].classList.remove('hidden');
+                        }
+                        if (data.detail == 'empty username') {
+                            DOM_REFERENCES['login-error-empty'].classList.remove('hidden');
+                        }
+                        if (data.detail == 'invalid username') {
+                            DOM_REFERENCES['login-error-invalid'].classList.remove('hidden');
+                        }
+                    }
+
+                    // success! we are now logged in
+                    else {
+                        // hide the login panel and show the chat panel
+                        DOM_REFERENCES['chat-panel'].classList.remove('hidden');
+                        DOM_REFERENCES['login-panel'].classList.add('hidden');
+
+                        // store our username so we can style our own chat messages differently from the rest of the Chatroom
+                        myUsername = DOM_REFERENCES['username'].value;
+
+                        // call our get_messages function once - this will request the current messages for the chatroom from the server
+                        getMessages();
+                    }
+                }
+            }
+
+            // a big error occured (network issue, etc.)
+            catch(error) {                
+                DOM_REFERENCES['login-error-general'].classList.remove('hidden');
+            }
+        }
+
+        // add new messages
+        DOM_REFERENCES['send-button'].onclick = async function(event) {
+            event.preventDefault();
+
+            // if the input box is blank, don't send a message
+            if (DOM_REFERENCES['message-input'].value.length == 0) {
+                return;
+            }
+
+            // construct a payload object to send to the server
+            payload = {
+                message: DOM_REFERENCES['message-input'].value
+            }
+
+            // attempt to contact the Flask API
+            try {
+
+                // construct a fetch request that includes POST variables
+                const response = await fetch('/add_message', {
+                    method: 'POST',
+                    headers: {
+                        // We MUST tell the server that the text we are sending is formatted as JSON
+                        'Content-Type': 'application/json' 
+                    },
+
+                    // Serialize the JS object into a JSON string
+                    body: JSON.stringify(payload)
+                });
+
+                // no need to do anything here - the inital call to getMessages() will handle pulling messages from the server
+            }
+
+            catch(error) {
+
+                // a big error occured, we can just ignore it for now since the request didn't go through                
+
+            }
+
+            // clear the input box
+            DOM_REFERENCES['message-input'].value = '';
+        }
+
+
+        async function getMessages() {
+
+            // contact the server and ask for 
+            const response = await fetch('/get_messages?message_offset=' + messageOffset);
+            if (response.ok) {
+
+                // parse the data and create messages using provided function
+                const messageData = await response.json()
+                for (messageInfo of messageData.messages) {
+                    createMessageBubble(messageInfo.username, messageInfo.message, messageInfo.color);
+                }
+
+                // update UI scrolling
+                updateScrolling();
+
+                // update our message offset for future calls to the server
+                messageOffset = messageData.total_messages;
+
+                // get new message data in 1 second from now
+                setTimeout(getMessages, 1000);
+
+            }
+
+            else {
+                // something went wrong, we can try again in 2 seconds
+                setTimeout( getMessages, 2000 );
+            }
+
+        }
+
+        // PROVIDED: Helper functions
+        function createMessageBubble(username, message, color) {
+            // outer container div
+            const outerDiv = document.createElement('div');
+            outerDiv.classList.add('message');
+
+            // handle whether this is our message, or another user's message
+            if (username == myUsername) {
+                outerDiv.classList.add('sent')
+            }
+            else {
+                outerDiv.classList.add('received')
+            }
+
+            // inner div - sender information
+            const senderDiv = document.createElement('div');
+            senderDiv.classList.add('meta');
+            senderDiv.innerText = username;
+            senderDiv.style.color = color;
+
+            // inner div - message
+            const messageDiv = document.createElement('div');
+            messageDiv.innerText = message;
+
+            // organize the divs
+            outerDiv.appendChild(senderDiv);
+            outerDiv.appendChild(messageDiv);            
+
+            // add to page
+            DOM_REFERENCES['chat-messages'].appendChild(outerDiv);            
+        }
+
+        // PROVIDED: A function that adjusts the scroll offset as the message panel grows
+        function updateScrolling() {
+            const scrollHeight = DOM_REFERENCES['chat-messages'].scrollHeight;
+            const scrollTop = DOM_REFERENCES['chat-messages'].scrollTop;
+            const clientHeight = DOM_REFERENCES['chat-messages'].clientHeight;
+
+            if (clientHeight + scrollTop >= scrollHeight - 100) {
+                DOM_REFERENCES['chat-messages'].scrollTop = scrollHeight;
+            }
+        }
+
+    </script>
+
+</body>
+</html>
